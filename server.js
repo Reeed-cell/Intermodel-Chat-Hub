@@ -6,10 +6,17 @@
  * - The browser never sees the key, the base URL, or stack traces
  * - Server identity headers are stripped
  */
+const path = require("path");
+const fs = require("fs"); // Added this to 'peek' at your files
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 
-require("dotenv").config();
+console.log("--- DEBUG START ---");
+console.log("Current Directory:", __dirname);
+console.log("Files in this folder:", fs.readdirSync(__dirname));
+console.log("API Key found in process.env:", process.env.OPENROUTER_API_KEY ? "YES" : "NO");
+console.log("--- DEBUG END ---");
+
 const express = require("express");
-const path    = require("path");
 const https   = require("https");
 const http    = require("http");
 const url     = require("url");
@@ -17,6 +24,7 @@ const url     = require("url");
 const app  = express();
 const PORT = process.env.PORT || 3000;
 const KEY  = process.env.OPENROUTER_API_KEY;
+
 
 if (!KEY || KEY === "your_openrouter_api_key_here") {
   console.error(
@@ -40,7 +48,7 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json({ limit: "64kb" }));
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(__dirname));;
 
 // ── Simple in-memory rate limiter (per IP, 60 req/min) ────────────────────────
 const ipWindows = new Map();
