@@ -1,0 +1,10 @@
+node_modules/
+
+# !! Never commit your real API key !!
+# .env is intentionally git-ignored.
+# Fill in .env locally — do NOT remove this line.
+.env
+
+*.log
+.DS_Store
+Thumbs.db

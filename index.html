@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Intermodel Chat Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+/* ── Reset ────────────────────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:        #07080f;
+  --bg2:       #0d0f1c;
+  --bg3:       #13162a;
+  --border:    #1e2240;
+  --border2:   #2a2f5a;
+  --accent:    #6c63ff;
+  --accent2:   #a78bfa;
+  --cyan:      #22d3ee;
+  --green:     #4ade80;
+  --amber:     #fbbf24;
+  --red:       #f87171;
+  --text:      #e2e4f0;
+  --text2:     #8b90b8;
+  --text3:     #555a82;
+  --font-ui:   'Syne', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+  --radius:    10px;
+  --drawer-w:  300px;
+}
+
+html,body{height:100%;overflow:hidden}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-ui);
+  font-size:15px;
+  background-image:radial-gradient(circle, #1e2240 1px, transparent 1px);
+  background-size:28px 28px;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:10px}
+
+/* ── Backdrop ─────────────────────────────────────────────────────────────── */
+#backdrop{
+  position:fixed;inset:0;
+  background:rgba(0,0,0,.55);
+  backdrop-filter:blur(2px);
+  z-index:100;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .28s ease;
+}
+#backdrop.open{opacity:1;pointer-events:all}
+
+/* ── Drawer ───────────────────────────────────────────────────────────────── */
+#drawer{
+  position:fixed;
+  top:0;left:0;bottom:0;
+  width:var(--drawer-w);
+  background:var(--bg2);
+  border-right:1px solid var(--border);
+  z-index:200;
+  display:flex;
+  flex-direction:column;
+  transform:translateX(calc(-1 * var(--drawer-w) - 2px));
+  transition:transform .3s cubic-bezier(.4,0,.2,1);
+  overflow-y:auto;
+  overflow-x:hidden;
+}
+#drawer.open{transform:translateX(0)}
+
+/* Drawer header */
+.drawer-head{
+  padding:20px 18px 16px;
+  border-bottom:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+.drawer-head .logo{
+  display:flex;align-items:center;gap:9px;
+}
+.drawer-head .logo .dot{
+  width:9px;height:9px;
+  border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 10px var(--accent);
+  animation:pulse 2.4s ease-in-out infinite;
+  flex-shrink:0;
+}
+.drawer-head .logo h1{
+  font-size:1rem;font-weight:800;
+  letter-spacing:-.5px;color:#fff;
+  line-height:1.2;
+}
+.drawer-head .logo p{
+  font-size:.65rem;color:var(--text3);
+  font-family:var(--font-mono);
+  margin-top:2px;
+}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* Close X button inside drawer */
+#close-btn{
+  background:none;border:none;
+  color:var(--text3);font-size:1.3rem;
+  cursor:pointer;padding:4px 6px;
+  border-radius:6px;
+  transition:color .15s,background .15s;
+  line-height:1;
+}
+#close-btn:hover{color:var(--text);background:var(--border)}
+
+/* Drawer sections */
+.dr-section{
+  padding:16px 16px 14px;
+  border-bottom:1px solid var(--border);
+}
+.dr-label{
+  font-size:.62rem;
+  text-transform:uppercase;
+  letter-spacing:1.6px;
+  color:var(--text3);
+  font-weight:600;
+  margin-bottom:10px;
+  font-family:var(--font-mono);
+}
+
+/* Model select */
+.model-wrap{position:relative}
+.model-wrap select{
+  width:100%;
+  background:var(--bg3);
+  border:1px solid var(--border2);
+  color:var(--text);
+  font-family:var(--font-ui);
+  font-size:.82rem;
+  padding:9px 30px 9px 10px;
+  border-radius:var(--radius);
+  appearance:none;
+  cursor:pointer;
+  outline:none;
+  transition:border-color .2s;
+}
+.model-wrap select:focus{border-color:var(--accent)}
+.model-wrap::after{
+  content:"▾";position:absolute;
+  right:10px;top:50%;transform:translateY(-50%);
+  color:var(--text3);pointer-events:none;font-size:.8rem;
+}
+.skeleton{
+  height:38px;
+  background:linear-gradient(90deg,var(--bg3) 25%,var(--border) 50%,var(--bg3) 75%);
+  background-size:200% 100%;
+  border-radius:var(--radius);
+  animation:shimmer 1.4s infinite;
+}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* Gauges */
+.gauge-row{margin-bottom:10px}
+.gauge-meta{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+.gauge-meta .g-label{font-size:.75rem;color:var(--text2)}
+.gauge-meta .g-val{font-size:.72rem;font-family:var(--font-mono);color:var(--text)}
+.gauge-bar{height:5px;background:var(--bg3);border-radius:99px;overflow:hidden}
+.gauge-fill{height:100%;border-radius:99px;background:var(--green);transition:width .5s ease,background .4s}
+.gauge-fill.warn{background:var(--amber)}
+.gauge-fill.danger{background:var(--red)}
+
+/* Model ID badge */
+.model-id{
+  background:var(--bg3);border:1px solid var(--border);border-radius:6px;
+  padding:7px 9px;font-size:.66rem;font-family:var(--font-mono);
+  color:var(--cyan);word-break:break-all;line-height:1.5;
+}
+
+/* ── Nav link buttons ─────────────────────────────────────────────────────── */
+.nav-links{
+  display:flex;flex-direction:column;gap:6px;
+  padding:14px 16px;
+  border-bottom:1px solid var(--border);
+}
+.nav-btn{
+  display:flex;align-items:center;gap:10px;
+  background:transparent;
+  border:1px solid var(--border);
+  color:var(--text2);
+  font-family:var(--font-ui);
+  font-size:.85rem;
+  font-weight:600;
+  padding:10px 13px;
+  border-radius:var(--radius);
+  cursor:pointer;
+  text-decoration:none;
+  transition:all .18s;
+  width:100%;
+  text-align:left;
+}
+.nav-btn:hover{
+  background:var(--bg3);
+  color:var(--text);
+  border-color:var(--accent);
+}
+.nav-btn .nb-icon{font-size:1rem;flex-shrink:0}
+.nav-btn.github:hover{border-color:var(--cyan);color:var(--cyan)}
+.nav-btn.docs:hover{border-color:var(--green);color:var(--green)}
+.nav-btn.help-btn:hover{border-color:var(--accent2);color:var(--accent2)}
+
+/* Utility buttons */
+.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sb-btn{
+  background:var(--bg3);border:1px solid var(--border2);
+  color:var(--text2);font-family:var(--font-ui);font-size:.78rem;
+  padding:8px 6px;border-radius:var(--radius);cursor:pointer;
+  transition:all .18s;white-space:nowrap;
+}
+.sb-btn:hover{background:var(--border);color:var(--text);border-color:var(--accent)}
+
+.dr-footer{
+  margin-top:auto;
+  padding:14px 16px;
+  font-size:.65rem;
+  color:var(--text3);
+  font-family:var(--font-mono);
+  line-height:1.8;
+  border-top:1px solid var(--border);
+}
+
+/* ── Main layout ──────────────────────────────────────────────────────────── */
+#app{
+  display:flex;flex-direction:column;
+  height:100vh;
+  overflow:hidden;
+}
+
+/* ── Topbar ───────────────────────────────────────────────────────────────── */
+#topbar{
+  border-bottom:1px solid var(--border);
+  padding:0 18px;
+  height:54px;
+  background:var(--bg2);
+  display:flex;align-items:center;gap:12px;
+  flex-shrink:0;
+}
+#hamburger{
+  background:none;border:none;
+  cursor:pointer;
+  color:var(--text2);
+  padding:6px;
+  border-radius:8px;
+  display:flex;flex-direction:column;gap:5px;
+  transition:color .15s,background .15s;
+  flex-shrink:0;
+}
+#hamburger:hover{background:var(--border);color:var(--text)}
+#hamburger span{
+  display:block;width:20px;height:2px;
+  background:currentColor;
+  border-radius:2px;
+  transition:transform .25s ease, opacity .2s;
+}
+/* Animate to X when open */
+#hamburger.open span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+#hamburger.open span:nth-child(2){opacity:0;transform:scaleX(0)}
+#hamburger.open span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+
+.topbar-title{
+  font-size:.9rem;font-weight:700;
+  letter-spacing:-.3px;color:#fff;
+  flex-shrink:0;
+}
+.topbar-sep{color:var(--border2);flex-shrink:0}
+.model-badge{
+  font-size:.75rem;
+  background:rgba(108,99,255,.12);
+  border:1px solid rgba(108,99,255,.28);
+  color:var(--accent2);
+  padding:3px 10px;
+  border-radius:99px;
+  font-family:var(--font-mono);
+  max-width:340px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+/* ── Notifications ─────────────────────────────────────────────────────────── */
+#banner,#warn-strip{
+  display:none;
+  margin:10px 18px 0;
+  padding:9px 14px;
+  border-radius:var(--radius);
+  font-size:.82rem;
+  flex-shrink:0;
+}
+#banner{
+  background:rgba(108,99,255,.1);
+  border:1px solid rgba(108,99,255,.25);
+  color:var(--accent2);
+}
+#warn-strip{
+  background:rgba(251,191,36,.08);
+  border:1px solid rgba(251,191,36,.25);
+  color:var(--amber);
+}
+
+/* ── Messages ──────────────────────────────────────────────────────────────── */
+#messages{
+  flex:1;overflow-y:auto;
+  padding:20px 22px;
+  display:flex;flex-direction:column;gap:16px;
+}
+.msg{
+  display:flex;flex-direction:column;gap:5px;
+  animation:msgIn .22s ease;
+}
+@keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.msg-meta{
+  font-size:.68rem;font-family:var(--font-mono);
+  color:var(--text3);display:flex;align-items:center;gap:6px;
+}
+.msg-meta .role-tag{padding:2px 7px;border-radius:4px;font-weight:500}
+.msg.user   .role-tag{background:rgba(108,99,255,.15);color:var(--accent2)}
+.msg.assistant .role-tag{background:rgba(34,211,238,.1);color:var(--cyan)}
+.msg-bubble{
+  padding:13px 16px;border-radius:12px;
+  font-size:.9rem;line-height:1.7;max-width:800px;
+  white-space:pre-wrap;word-break:break-word;
+}
+.msg.user      .msg-bubble{background:#1a1d35;border:1px solid var(--border2);align-self:flex-end;border-bottom-right-radius:4px}
+.msg.assistant .msg-bubble{background:#0f1120;border:1px solid var(--border);align-self:flex-start;border-bottom-left-radius:4px}
+.cursor{
+  display:inline-block;width:2px;height:1em;
+  background:var(--cyan);margin-left:2px;
+  vertical-align:text-bottom;
+  animation:blink .7s step-start infinite;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+#empty{
+  flex:1;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:12px;
+  color:var(--text3);font-family:var(--font-mono);
+  font-size:.8rem;text-align:center;padding:40px;
+  pointer-events:none;
+}
+#empty .big-icon{font-size:2.8rem;filter:grayscale(.3)}
+#empty p{max-width:300px;line-height:1.8}
+#empty .hint{
+  font-size:.7rem;
+  margin-top:4px;
+  color:var(--text3);
+  opacity:.6;
+}
+
+/* ── Input ─────────────────────────────────────────────────────────────────── */
+#inputbar{
+  padding:14px 18px 18px;
+  background:var(--bg2);
+  border-top:1px solid var(--border);
+  flex-shrink:0;
+}
+.input-wrap{
+  display:flex;gap:10px;align-items:flex-end;
+  background:var(--bg3);
+  border:1px solid var(--border2);
+  border-radius:14px;
+  padding:8px 8px 8px 14px;
+  transition:border-color .2s;
+}
+.input-wrap:focus-within{border-color:var(--accent)}
+#prompt{
+  flex:1;background:transparent;border:none;outline:none;
+  color:var(--text);font-family:var(--font-ui);font-size:.9rem;
+  resize:none;max-height:160px;line-height:1.6;min-height:24px;
+}
+#prompt::placeholder{color:var(--text3)}
+#send-btn{
+  background:var(--accent);border:none;color:#fff;
+  width:38px;height:38px;border-radius:10px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+  transition:background .18s,transform .1s;
+  font-size:1rem;
+}
+#send-btn:hover{background:var(--accent2);transform:scale(1.06)}
+#send-btn:disabled{background:var(--border2);cursor:not-allowed;transform:none}
+#send-btn svg{width:17px;height:17px;fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.input-footer{
+  margin-top:7px;text-align:center;
+  font-size:.67rem;color:var(--text3);font-family:var(--font-mono);
+}
+
+/* ── Help Modal ────────────────────────────────────────────────────────────── */
+#help-modal{
+  position:fixed;inset:0;z-index:500;
+  display:none;align-items:center;justify-content:center;
+  padding:20px;
+  background:rgba(0,0,0,.6);
+  backdrop-filter:blur(4px);
+}
+#help-modal.open{display:flex}
+.help-box{
+  background:var(--bg2);
+  border:1px solid var(--border2);
+  border-radius:16px;
+  max-width:500px;width:100%;
+  padding:28px;
+  animation:modalIn .22s ease;
+  max-height:90vh;
+  overflow-y:auto;
+}
+@keyframes modalIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:none}}
+.help-box h2{
+  font-size:1.1rem;font-weight:800;margin-bottom:18px;
+  display:flex;align-items:center;gap:9px;color:#fff;
+}
+.help-box h2 span{font-size:1.4rem}
+.help-item{
+  display:flex;gap:12px;margin-bottom:16px;
+  padding-bottom:16px;
+  border-bottom:1px solid var(--border);
+}
+.help-item:last-of-type{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.help-item .hi-icon{
+  font-size:1.3rem;flex-shrink:0;
+  width:36px;height:36px;
+  background:var(--bg3);border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+}
+.help-item .hi-text h3{font-size:.88rem;font-weight:700;margin-bottom:4px;color:var(--text)}
+.help-item .hi-text p{font-size:.8rem;color:var(--text2);line-height:1.6}
+.help-close{
+  margin-top:20px;width:100%;
+  background:var(--accent);border:none;color:#fff;
+  font-family:var(--font-ui);font-size:.9rem;font-weight:700;
+  padding:11px;border-radius:var(--radius);cursor:pointer;
+  transition:background .18s;
+}
+.help-close:hover{background:var(--accent2)}
+</style>
+</head>
+<body>
+
+<!-- ── Backdrop ─────────────────────────────────────────────────────────────── -->
+<div id="backdrop" onclick="closeDrawer()"></div>
+
+<!-- ── Slide-out Drawer ──────────────────────────────────────────────────────── -->
+<aside id="drawer">
+  <div class="drawer-head">
+    <div class="logo">
+      <span class="dot"></span>
+      <div>
+        <h1>Intermodel Chat Hub</h1>
+        <p>free models · zero cost 🎉</p>
+      </div>
+    </div>
+    <button id="close-btn" onclick="closeDrawer()" title="Close menu">✕</button>
+  </div>
+
+  <!-- Model selector -->
+  <div class="dr-section">
+    <div class="dr-label">Active Model</div>
+    <div class="model-wrap" id="model-wrap">
+      <div class="skeleton"></div>
+    </div>
+    <p style="font-size:.65rem;color:var(--text3);margin-top:7px;font-family:var(--font-mono)" id="model-count"></p>
+  </div>
+
+  <!-- Rate limits -->
+  <div class="dr-section">
+    <div class="dr-label">Rate Limits</div>
+    <div class="gauge-row">
+      <div class="gauge-meta">
+        <span class="g-label">Daily requests</span>
+        <span class="g-val" id="day-val">0 / 50</span>
+      </div>
+      <div class="gauge-bar"><div class="gauge-fill" id="day-fill" style="width:0%"></div></div>
+    </div>
+    <div class="gauge-row">
+      <div class="gauge-meta">
+        <span class="g-label">Per minute (RPM)</span>
+        <span class="g-val" id="rpm-val">0 / 20</span>
+      </div>
+      <div class="gauge-bar"><div class="gauge-fill" id="rpm-fill" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <!-- Model ID -->
+  <div class="dr-section">
+    <div class="dr-label">Model ID</div>
+    <div class="model-id" id="model-id-badge">—</div>
+  </div>
+
+  <!-- Nav links -->
+  <div class="nav-links">
+    <button class="nav-btn help-btn" onclick="openHelp()">
+      <span class="nb-icon">❓</span> Help
+    </button>
+    <a class="nav-btn docs" href="https://docs.google.com/document/d/1ZjX38IGTOe8lja09l279O3JNE-vjxjR6UT_XuwVqCB8/edit?usp=sharing" target="_blank" rel="noopener">
+      <span class="nb-icon">📄</span> Documentation
+    </a>
+    <a class="nav-btn github" href="https://github.com/Reeed-cell/Intermodel-Chat-Hub" target="_blank" rel="noopener">
+      <span class="nb-icon">🐙</span> View on GitHub
+    </a>
+  </div>
+
+  <!-- Utility buttons -->
+  <div class="dr-section">
+    <div class="btn-row">
+      <button class="sb-btn" onclick="clearChat()">🗑 Clear chat</button>
+      <button class="sb-btn" onclick="reloadModels()">🔄 Reload models</button>
+    </div>
+  </div>
+
+  <div class="dr-footer">
+    API key is server-side only.<br>
+    Never sent to the browser.<br>
+    MIT License · Reeed-cell
+  </div>
+</aside>
+
+<!-- ── Help Modal ─────────────────────────────────────────────────────────────── -->
+<div id="help-modal" onclick="closeHelpOutside(event)">
+  <div class="help-box">
+    <h2><span>💡</span> How to use</h2>
+
+    <div class="help-item">
+      <div class="hi-icon">☰</div>
+      <div class="hi-text">
+        <h3>Open the menu</h3>
+        <p>Tap the three-line button (☰) in the top-left to open the side panel. Switch models, view rate limits, and access links from there.</p>
+      </div>
+    </div>
+
+    <div class="help-item">
+      <div class="hi-icon">🤖</div>
+      <div class="hi-text">
+        <h3>Pick a model</h3>
+        <p>All models listed are <strong>free</strong> on OpenRouter. You can switch mid-conversation — the full history is always forwarded as context.</p>
+      </div>
+    </div>
+
+    <div class="help-item">
+      <div class="hi-icon">📡</div>
+      <div class="hi-text">
+        <h3>Streaming responses</h3>
+        <p>Replies stream in real-time, token by token. A blinking cursor shows the model is still generating.</p>
+      </div>
+    </div>
+
+    <div class="help-item">
+      <div class="hi-icon">📊</div>
+      <div class="hi-text">
+        <h3>Rate limits</h3>
+        <p>The app tracks <strong>50 requests/day</strong> and <strong>20 requests/minute</strong> client-side. Counters are saved in your browser and reset at midnight.</p>
+      </div>
+    </div>
+
+    <div class="help-item">
+      <div class="hi-icon">🔒</div>
+      <div class="hi-text">
+        <h3>Your API key is safe</h3>
+        <p>The key lives only in the server's <code style="font-family:var(--font-mono);font-size:.78rem;color:var(--cyan)">.env</code> file. It is never sent to or visible in the browser.</p>
+      </div>
+    </div>
+
+    <button class="help-close" onclick="closeHelp()">Got it ✓</button>
+  </div>
+</div>
+
+<!-- ── App Shell ──────────────────────────────────────────────────────────────── -->
+<div id="app">
+
+  <div id="topbar">
+    <button id="hamburger" onclick="toggleDrawer()" title="Menu" aria-label="Open menu">
+      <span></span><span></span><span></span>
+    </button>
+    <span class="topbar-title">Intermodel Chat Hub</span>
+    <span class="topbar-sep">·</span>
+    <span class="model-badge" id="topbar-model">loading…</span>
+  </div>
+
+  <div id="banner"></div>
+  <div id="warn-strip"></div>
+
+  <div id="messages">
+    <div id="empty">
+      <div class="big-icon">🤖</div>
+      <p>Open the menu ☰ to pick a free model, then start chatting.</p>
+      <p class="hint">All models are $0.00 · No credit card needed</p>
+    </div>
+  </div>
+
+  <div id="inputbar">
+    <div class="input-wrap">
+      <textarea id="prompt" rows="1" placeholder="Ask anything… (free models, no cost 🎉)" maxlength="12000"></textarea>
+      <button id="send-btn" onclick="sendMessage()" title="Send (Enter)">
+        <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+    <div class="input-footer" id="input-footer">⏎ Enter to send &nbsp;·&nbsp; Shift+Enter for newline</div>
+  </div>
+</div>
+
+<script>
+/* ── Constants ───────────────────────────────────────────────────────────── */
+const DAILY_LIMIT = 50;
+const RPM_LIMIT   = 20;
+
+/* ── State (localStorage) ────────────────────────────────────────────────── */
+function todayKey() { return new Date().toISOString().slice(0,10); }
+function loadState() {
+  try {
+    const s = JSON.parse(localStorage.getItem("or_state") || "{}");
+    if (s.date !== todayKey()) { s.reqDay = 0; s.date = todayKey(); }
+    s.reqDay     = s.reqDay || 0;
+    s.timestamps = (s.timestamps || []).filter(t => Date.now() - t < 60000);
+    s.messages   = s.messages || [];
+    return s;
+  } catch { return { reqDay:0, date:todayKey(), timestamps:[], messages:[] }; }
+}
+function saveState(s) { localStorage.setItem("or_state", JSON.stringify(s)); }
+
+let state    = loadState();
+let models   = {};
+let streaming = false;
+
+/* ── Drawer ──────────────────────────────────────────────────────────────── */
+function toggleDrawer() {
+  const open = document.getElementById("drawer").classList.toggle("open");
+  document.getElementById("backdrop").classList.toggle("open", open);
+  document.getElementById("hamburger").classList.toggle("open", open);
+  document.body.style.overflow = open ? "hidden" : "";
+}
+function closeDrawer() {
+  document.getElementById("drawer").classList.remove("open");
+  document.getElementById("backdrop").classList.remove("open");
+  document.getElementById("hamburger").classList.remove("open");
+  document.body.style.overflow = "";
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape") { closeDrawer(); closeHelp(); } });
+
+/* ── Help modal ──────────────────────────────────────────────────────────── */
+function openHelp()  { closeDrawer(); document.getElementById("help-modal").classList.add("open"); }
+function closeHelp() { document.getElementById("help-modal").classList.remove("open"); }
+function closeHelpOutside(e) { if (e.target === document.getElementById("help-modal")) closeHelp(); }
+
+/* ── Models ──────────────────────────────────────────────────────────────── */
+async function loadModels() {
+  const wrap = document.getElementById("model-wrap");
+  wrap.innerHTML = '<div class="skeleton"></div>';
+  try {
+    const r = await fetch("/api/models");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    models = await r.json();
+    const names = Object.keys(models);
+    if (!state.selectedModel || !models[state.selectedModel]) {
+      state.selectedModel = names[0] || "";
+    }
+    const sel = document.createElement("select");
+    sel.id = "model-select";
+    for (const label of names) {
+      const opt = document.createElement("option");
+      opt.value = opt.textContent = label;
+      if (label === state.selectedModel) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    sel.addEventListener("change", () => {
+      const prev = state.selectedModel;
+      state.selectedModel = sel.value;
+      saveState(state);
+      updateModelDisplay();
+      if (prev !== state.selectedModel) showBanner("Switched to " + state.selectedModel);
+    });
+    wrap.innerHTML = "";
+    wrap.appendChild(sel);
+    document.getElementById("model-count").textContent = names.length + " free models loaded";
+    updateModelDisplay();
+  } catch {
+    wrap.innerHTML = '<p style="color:var(--red);font-size:.78rem;font-family:var(--font-mono)">Failed to load models</p>';
+  }
+}
+function updateModelDisplay() {
+  const label = state.selectedModel || "—";
+  const id    = models[label] || "—";
+  document.getElementById("model-id-badge").textContent = id;
+  document.getElementById("topbar-model").textContent   = label;
+  updateGauges();
+  checkWarn();
+}
+async function reloadModels() {
+  models = {};
+  await loadModels();
+  showBanner("Models reloaded from OpenRouter.");
+}
+
+/* ── Rate limits ─────────────────────────────────────────────────────────── */
+function rpmNow() {
+  state.timestamps = state.timestamps.filter(t => Date.now() - t < 60000);
+  return state.timestamps.length;
+}
+function canSend() {
+  if (state.reqDay >= DAILY_LIMIT) return { ok:false, msg:`Daily limit reached (${DAILY_LIMIT} requests). Resets at midnight.` };
+  if (rpmNow() >= RPM_LIMIT)      return { ok:false, msg:`Rate limit: ${RPM_LIMIT} req/min reached. Wait a moment.` };
+  return { ok:true, msg:"" };
+}
+function recordReq() { state.reqDay++; state.timestamps.push(Date.now()); saveState(state); updateGauges(); }
+function updateGauges() {
+  const dayPct = Math.min(state.reqDay / DAILY_LIMIT, 1);
+  const rpmPct = Math.min(rpmNow()    / RPM_LIMIT,   1);
+  document.getElementById("day-val").textContent = `${state.reqDay} / ${DAILY_LIMIT}`;
+  document.getElementById("rpm-val").textContent = `${rpmNow()} / ${RPM_LIMIT}`;
+  const df = document.getElementById("day-fill");
+  df.style.width = (dayPct*100)+"%";
+  df.className = "gauge-fill"+(dayPct>=.9?" danger":dayPct>=.7?" warn":"");
+  const rf = document.getElementById("rpm-fill");
+  rf.style.width = (rpmPct*100)+"%";
+  rf.className = "gauge-fill"+(rpmPct>=.9?" danger":rpmPct>=.7?" warn":"");
+}
+function checkWarn() {
+  const strip = document.getElementById("warn-strip");
+  const rem   = DAILY_LIMIT - state.reqDay;
+  if (rem <= 5) { strip.textContent = `⚠️  Only ${rem} daily request(s) remaining!`; strip.style.display="block"; }
+  else strip.style.display="none";
+}
+
+/* ── UI helpers ──────────────────────────────────────────────────────────── */
+function showBanner(msg) {
+  const b = document.getElementById("banner");
+  b.textContent = msg; b.style.display="block";
+  clearTimeout(b._t);
+  b._t = setTimeout(() => { b.style.display="none"; }, 4000);
+}
+function appendMsg(role, content, modelLabel) {
+  const empty = document.getElementById("empty");
+  if (empty) empty.remove();
+  const wrap = document.getElementById("messages");
+  const div  = document.createElement("div");
+  div.className = "msg " + role;
+  div.innerHTML = `<div class="msg-meta"><span class="role-tag">${role==="user"?"You":(modelLabel||"AI")}</span></div><div class="msg-bubble"></div>`;
+  wrap.appendChild(div);
+  div.querySelector(".msg-bubble").textContent = content;
+  wrap.scrollTop = wrap.scrollHeight;
+  return div.querySelector(".msg-bubble");
+}
+function scrollMessages() {
+  const m = document.getElementById("messages");
+  m.scrollTop = m.scrollHeight;
+}
+
+/* ── Send ────────────────────────────────────────────────────────────────── */
+async function sendMessage() {
+  if (streaming) return;
+  const ta = document.getElementById("prompt");
+  const prompt = ta.value.trim();
+  if (!prompt) return;
+  const { ok, msg } = canSend();
+  if (!ok) { showBanner("🚫 " + msg); return; }
+  ta.value = ""; ta.style.height = "";
+  setEnabled(false);
+  state.messages.push({ role:"user", content:prompt });
+  saveState(state);
+  appendMsg("user", prompt);
+  const modelLabel = state.selectedModel;
+  const modelId    = models[modelLabel] || "";
+  if (!modelId) { showBanner("⚠ No model selected."); setEnabled(true); return; }
+  const apiMsgs = state.messages.map(m => ({ role:m.role, content:m.content }));
+  const bubble  = appendMsg("assistant", "", modelLabel);
+  const cursor  = document.createElement("span");
+  cursor.className = "cursor";
+  bubble.appendChild(cursor);
+  streaming = true;
+  try {
+    const resp = await fetch("/api/chat", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ model:modelId, messages:apiMsgs }),
+    });
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const reader = resp.body.getReader();
+    const dec    = new TextDecoder();
+    let buf = "", full = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream:true });
+      const lines = buf.split("\n"); buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        if (raw === "[DONE]") break;
+        let parsed; try { parsed = JSON.parse(raw); } catch { continue; }
+        if (parsed.error) throw new Error(parsed.error);
+        const delta = parsed.choices?.[0]?.delta?.content;
+        if (delta) { full += delta; bubble.textContent = full; bubble.appendChild(cursor); scrollMessages(); }
+      }
+    }
+    cursor.remove();
+    recordReq();
+    state.messages.push({ role:"assistant", content:full, model:modelLabel });
+    saveState(state);
+  } catch(e) {
+    cursor.remove();
+    bubble.style.color = "var(--red)";
+    bubble.textContent = "❌ " + (e.message || "Request failed.");
+    state.messages.pop();
+    saveState(state);
+  }
+  streaming = false;
+  setEnabled(true);
+  updateGauges();
+  checkWarn();
+}
+function setEnabled(yes) {
+  document.getElementById("send-btn").disabled  = !yes;
+  document.getElementById("prompt").disabled    = !yes;
+  document.getElementById("input-footer").textContent =
+    yes ? "⏎ Enter to send · Shift+Enter for newline" : "⏳ Waiting for response…";
+}
+
+/* ── Clear ────────────────────────────────────────────────────────────────── */
+function clearChat() {
+  state.messages = []; saveState(state);
+  document.getElementById("messages").innerHTML = `
+    <div id="empty">
+      <div class="big-icon">🤖</div>
+      <p>Open the menu ☰ to pick a free model, then start chatting.</p>
+      <p class="hint">All models are $0.00 · No credit card needed</p>
+    </div>`;
+  showBanner("Chat cleared.");
+  closeDrawer();
+}
+
+/* ── Textarea auto-resize + Enter key ────────────────────────────────────── */
+document.getElementById("prompt").addEventListener("input", function() {
+  this.style.height = "auto";
+  this.style.height = Math.min(this.scrollHeight, 160) + "px";
+});
+document.getElementById("prompt").addEventListener("keydown", function(e) {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+/* ── Restore history & boot ──────────────────────────────────────────────── */
+function restoreHistory() {
+  if (!state.messages.length) return;
+  const empty = document.getElementById("empty");
+  if (empty) empty.remove();
+  for (const m of state.messages) appendMsg(m.role, m.content, m.model||"");
+}
+updateGauges(); checkWarn(); restoreHistory(); loadModels();
+setInterval(() => { updateGauges(); checkWarn(); }, 5000);
+</script>
+</body>
+</html>
